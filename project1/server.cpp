@@ -9,6 +9,8 @@
 #include <sys/socket.h>
 #include <arpa/inet.h>
 #include <sys/wait.h>
+#include <sys/epoll.h>
+#include <syscall.h>
 #include <iostream>
 
 #define PORT 		"18200"
@@ -17,7 +19,8 @@
 
 struct thread_arg {
 	int clientsock;
-	struct sockaddr client;
+	pthread_t tid;
+	unsigned int nid;
 };
 
 
@@ -35,7 +38,7 @@ void cleanup_and_exit(const char *errmsg) {
 	if(sockfd >=0 )
 		close(sockfd);
 	if(efd >=0 )
-		close(fd);
+		close(efd);
 	if(addr != NULL) {
 		freeaddrinfo(addr);
 		addr = NULL;
@@ -45,32 +48,43 @@ void cleanup_and_exit(const char *errmsg) {
 }
 
 void *thread_handler(void *arg) {
-	struct thread_arg *p = arg;
+	struct thread_arg *p = (struct thread_arg *)arg;
 	int clientfd, ret, len;
 	uint32_t num;
 	uint32_t result[32];
+	char str[32];
 	unsigned int i,f;
 	
 	clientfd = p->clientsock;
+	sprintf(str, "Thread(%u): ", p->nid);
 	free(p);
 	p = NULL;
-	
-	ret = recv(clientfd, &num, sizeof(uint32_t));
-	if(ret < sizeof(uint32_t))
+
+
+	ret = recv(clientfd, &num, sizeof(uint32_t), 0);
+	if(ret != sizeof(uint32_t))
 	{
 		perror("recv");
 		return NULL;
 	}
 	/*convert to host order*/
 	num = ntohl(num);
+	cout << str << "Received number " << num << " from some client." <<endl;
+	
+	cout << str << "Computing prime factors." << endl;
+	cout << str << "Prime factors of " << num << " are:" << endl;	
 	i = 0;
+	
 	/*prime factor decomposition*/
-	while(num % 2 == 0) {
+	while(num > 0 && num % 2 == 0) {
+		cout << str << "2" << endl;
 		result[i++] = htonl(2);
 		num = num/2;
 	}
+	f = 3;
 	while(num > 1) {
-		if(n % f ==0) {
+		if(num % f ==0) {
+			cout << str << f << endl;
 			result[i++] = htonl(f);
 			num = num/f;
 		}
@@ -78,29 +92,38 @@ void *thread_handler(void *arg) {
 			f = f + 2;
 		}
 	}
-	
+	/*no prime factor found, return 0 to client*/	
+	if(i == 0) {result[i++] = 0;}
+
 	/*send result to client*/
+	cout << str << "Sent prime factors back to that client." << endl;
 	len = sizeof(uint32_t)*i;
-	ret = send(clientsock, &result[0], len);
+	ret = send(clientfd, &result[0], len, 0);
 	if(ret != len) {
 		perror("send");
 	}
 	
 	/*close*/
-	close(clientsock);
+	close(clientfd);
 	
 	return NULL;
 }
 
 int main() {
+	struct addrinfo hints, *addr;
 	struct epoll_event ev, events[MAX_EVENTS];
-	int ret, nfds, n, addrlen, clentsock;
+	int ret, nfds, clientsock, n;
 	pthread_attr_t attr;
-	pthread_t tid;
-	struct thread_arg *arg;
+	struct thread_arg *parg;
 	struct sockaddr client;
-	
-	memset(&hint, 0, sizeof(hints));
+	socklen_t addrlen;
+	char str[64];
+	unsigned int nid;
+
+	memset(&hints, 0, sizeof(hints));
+	hints.ai_family = AF_INET;
+	hints.ai_socktype = SOCK_STREAM;
+	hints.ai_flags = AI_PASSIVE;
 	
 	if((ret = getaddrinfo(NULL, PORT, &hints, &addr)) != 0) {
 		cleanup_and_exit("getaddrinfo");
@@ -112,7 +135,7 @@ int main() {
 		cleanup_and_exit("socket");
 	}
 	/*reserve port on server*/
-	if(bind(sockfd, addr->ai_address, addr->ai_addrlen) == -1) {
+	if(bind(sockfd, addr->ai_addr, addr->ai_addrlen) == -1) {
 		cleanup_and_exit("bind");
 	}
 	freeaddrinfo(addr);
@@ -134,11 +157,18 @@ int main() {
 		cleanup_and_exit("epoll_ctl");
 	}
 	/*initialize pthread attr*/
-	if((s = pthread_attr_init(&attr)) == -1) {
+	if(pthread_attr_init(&attr) == -1) {
 		cleanup_and_exit("pthread_attr_init");
 	}
-	
+	/*set pthread to detached state, resources will be freed when returned*/
+	if(pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED) != 0) {
+		cleanup_and_exit("pthead_attr_setdetachstate");
+	}	
 	for(;;) {
+		cout << "Server is running and ready to " 
+			"receive connections on port "PORT"..."
+			<< endl;
+
 		/*use epoll to monitor all sockets*/
 		nfds = epoll_wait(efd, events, MAX_EVENTS, -1);
 		if(nfds == -1) {
@@ -147,33 +177,50 @@ int main() {
 		for(n = 0; n < nfds; n++) {
 			if(events[n].data.fd == sockfd) {
 				/*accept new client*/
-				clentsock = accept(sockfd, &client, &addrlen);
+				addrlen = sizeof(client);
+				
+				clientsock = accept(sockfd, &client, &addrlen);
 				if(clientsock == -1) {
 					cleanup_and_exit("accept");;
 				}
+				inet_ntop(client.sa_family, 
+				    &(((sockaddr_in *)(&client))->sin_addr),
+				    str, sizeof(str));
+				cout << "Accept client from " << str << endl;
 				ev.events = EPOLLIN;
 				ev.data.fd = clientsock;
 				/*add client socket to epoll monitoring list*/
-				if (epoll_ctl(efd, EPOLL_CTL_ADD, clientsock, &ev) == -1) {
+				if (epoll_ctl(efd, EPOLL_CTL_ADD, clientsock, 
+					&ev) == -1) 
+				{
 					cleanup_and_exit("epoll_ctl: conn_sock");
 				}
 			}
 			else {
-				/*client data is ready to read, create new thread to handle it*/
-				parg = malloc(sizeof(struct thread_arg));
-				if(arg == NULL) {cleanup_and_exit("malloc");}
+				/*client data is ready to read, 
+					create new thread to handle it*/
+
+				parg = (struct thread_arg *)
+					malloc(sizeof(struct thread_arg));
+				if(parg == NULL) {cleanup_and_exit("malloc");}
 				parg->clientsock = clientsock;
-				
-				ret = pthread_create(&tid, &attr, thread_handler, parg);
+				parg->nid = nid++;	
+				ret = pthread_create(&parg->tid, &attr,
+					 thread_handler, parg);
 				if(ret != 0) {
 					cleanup_and_exit("pthread_create");
 				}
+				cout << "Client data is ready, "
+					"create a thread to handle request."
+					 << endl; 
+
+				/*remove socket from monitoring list*/
+				epoll_ctl(efd, EPOLL_CTL_DEL, clientsock, &ev);
 				
 			}
 		}
 	}
-	accept
-	select
 	
 	return 0;
 }
+

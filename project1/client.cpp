@@ -11,28 +11,51 @@
 #include <sys/wait.h>
 #include <iostream>
 
-#define SRV_PORT	18200
+#define SRV_PORT	"18200"
 #define SRV_NAME	"127.0.0.1"
-#define MAX_NUM		(1<<32)
+#define MAX_NUM		(1<<31)
 #define BUFLEN		128
+
+int sockfd;
+struct addrinfo *res = NULL;
 
 using namespace std;
 
-int main() {
-	unsigned int num = 0;
-	int i, sockfd;
-	struct sockaddr_in saddr;
-	struct addrinfo hints, *res = NULL;
-	unit32_t buf[BUFLEN];
-	uint32_t *pnum;
+void cleanup_exit(const char *errmsg) {
 
-	
-	cout << "Please provide an integer > 1:" << endl; 
-	cin >> num;
-	
+	if(sockfd >= 0) {
+		close(sockfd);
+	}
+
+	if(res != NULL) {
+		freeaddrinfo(res);
+	}
+
+	if(errmsg != NULL) {
+		perror(errmsg);
+		exit(EXIT_FAILURE);
+	}
+	return;
+}
+
+int main(int argc, char **argv) {
+	unsigned int num = 0, i;
+	int sockfd, ret;
+	struct addrinfo hints;
+	uint32_t buf[BUFLEN];
+
+	/*get number from shell parameter*/
+	if(argc > 1) {
+		num = atoi(argv[1]);
+	}
+	else
+	{
+		cout << "Please provide an integer > 1:" << endl; 
+		cin >> num;
+	}
 	/*check the number if it is too big*/
-	if(num > MAX_NUM) {
-		cout << num << "is too big" << endl;
+	if(num == 0 || num > (unsigned)MAX_NUM) {
+		cout << "Invalid number " << num  << endl;
 		return 0;
 	}
 	
@@ -42,49 +65,46 @@ int main() {
 	/*fill address struct*/
 	if((ret = getaddrinfo(SRV_NAME, SRV_PORT, &hints, &res)) != 0) {
 		cerr << "getaddrinfo:" << gai_strerror(ret) << endl;
-		exit(EXIT_FAILURE);
+		cleanup_exit("getaddrinfo");
 	}
 	/*create a TCP socket fd*/
-	if((sockfd = socket(res->ai_family, res->ai_socktype, res->ai_protocol) < 0) {
-		cerr << "create socket fail" << endl;
-		freeaddrinfo(res);
-		exit(EXIT_FAILURE);
+	if((sockfd = socket(res->ai_family, res->ai_socktype, 
+			res->ai_protocol)) < 0) {
+		cleanup_exit("create socket fail");
 	}
+
 	/*connect to server*/
-	if((ret = connect(sockfd, res->ai_addr, res->ai_addrlen) < 0) {
-		cerr << "Cannot connect to server "SRV_NAME << ret << end;
-		close(sockfd);
-		freeaddrinfo(res);
-		exit(EXIT_FAILURE);
+	if((ret = connect(sockfd, res->ai_addr, res->ai_addrlen)) == -1) {
+		cerr << "Cannot connect to server "SRV_NAME << endl;
+		cleanup_exit("connect");
 	}
 	freeaddrinfo(res);
-	
+	res = NULL;
 	/*convert num to network order and fill in buf*/
-	buf[0] = htonl((unit32_t)num);
+	buf[0] = htonl((uint32_t)num);
 	/*send num to server*/
 	ret = send(sockfd, &buf[0], sizeof(uint32_t), 0);
-	if(ret < sizeof(unit32_t)) {
-		cerr << "Send fail " << ret << endl;
-		close(sockfd);
-		exit(EXIT_FAILURE);
+	if(ret < (signed)sizeof(uint32_t)) {
+		cleanup_exit("send");
 	}
 
 	cout << "Sent " << num << " to server on port "SRV_PORT << endl;
 	/*receive message returned*/
 	ret = recv(sockfd, &buf[0], sizeof(buf), 0);
-	if(ret < sizeof(uint32_t)) {
-		cerr << "recv fail " << ret << endl;
-		close(sockfd);
-		exit(EXIT_FAILURE);
+	if(ret < (signed)sizeof(uint32_t)) {
+		cleanup_exit("recv");
 	}
 	cout << "Received the following prime factors from server:" << endl;
 	/*get factors from buf, each factor take 32bits length, no separator*/
-	for(i = 0; i < ret/sizeof(unit32_t); i++) {
+	for(i = 0; i < ret/sizeof(uint32_t); i++) {
 		/*convert to host order and print factors, */
 		cout << ntohl(buf[i]) << endl;
 	}
 	
 	cout << "Done!" << endl;
-	close(sockfd);
+
+	cleanup_exit(NULL);
+
 	return 0;
 }
+
