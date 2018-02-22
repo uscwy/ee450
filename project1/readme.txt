@@ -6,8 +6,7 @@ The client is an interactive program. It will ask user to enter a number and
 then send the number to server, display the result server returned. 
 
 The server listens on specified TCP port. When receiving a number sent by 
-client, server decomposite it into prime factors and send the results back to 
-client.
+client, server decomposite it into prime factors and send the results back toclient.
 
 For better performance, server use epoll and pthread to handle requests from 
 client. 
@@ -17,6 +16,8 @@ client.
    
    client.cpp     Implementation of client
    server.cpp     Implementation of server
+   test.sh	  A simple script to test memory leak and exceptions
+
 
 REQUIREMENTS
 ------------
@@ -28,3 +29,4 @@ MAINTAINER
 ------------
 
 Yong Wang <yongw@usc.edu>
+
