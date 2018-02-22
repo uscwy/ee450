@@ -2,12 +2,21 @@ INTRODUCTION
 ------------
 
 The prject contains a simple TCP server and client implemented in C language.
-The client is an intractive program which send an integer entered by user to 
-server and display the result server returned. The server listens on specified 
-TCP port and decompose the integer received.
+The client is an interactive program. It will ask user to enter a number and 
+then send the number to server, display the result server returned. 
+
+The server listens on specified TCP port. When receiving a number sent by 
+client, server decomposite it into prime factors and send the results back to 
+client.
+
+For better performance, server use epoll and pthread to handle requests from 
+client. 
 
  * The project is located at:
-
+   https://github.com/uscwy/ee450/tree/master/project1
+   
+   client.cpp     Implementation of client
+   server.cpp     Implementation of server
 
 REQUIREMENTS
 ------------
@@ -17,4 +26,5 @@ This project need specified VM to compile and run.
 
 MAINTAINER
 ------------
+
 Yong Wang <yongw@usc.edu>
