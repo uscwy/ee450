@@ -1,15 +1,16 @@
 
 CC=g++
 CFLAGS=-g -Wall
-LDFLAGS=
+LDFLAGS=-pthread
 
 all: server client
-    
-server: server.c
-	$(CC) $(CFLAGS) $(LDFLAGS) -o $@
-	
-client:	client.c
-	$(CC) $(CFLAGS) $(LDFLAGS) -o $@
+
+server: server.cpp
+
+client:	client.cpp
+
+.cpp:
+	$(CC) $(CFLAGS) $(LDFLAGS) $< -o $@
 
 clean:
 	rm -f server client
