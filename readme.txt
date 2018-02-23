@@ -10,7 +10,9 @@ client, server decomposite it into prime factors and send the results back
 to client.
 
 For better performance, server use epoll and pthread to handle requests from 
-client. 
+client. When client is accepted, server will add the socket to monitoring
+list of epoll. When a client socket is ready to read, server will create a
+new thread to handle it.
 
  * The project is located at:
    https://github.com/uscwy/ee450project1
