@@ -69,14 +69,15 @@ void *thread_handler(void *arg) {
 	}
 	/*convert to host order*/
 	num = ntohl(num);
-	cout << str << "Received number " << num << " from some client." <<endl;
+	cout << str << "Received number " << num 
+		<< " from some client." <<endl;
 	
 	cout << str << "Computing prime factors." << endl;
 	cout << str << "Prime factors of " << num << " are:" << endl;	
 	i = 0;
 	
 	/*prime factor decomposition*/
-	while(num > 0 && num % 2 == 0) {
+	while(num > 1 && num % 2 == 0) {
 		cout << str << "2" << endl;
 		result[i++] = htonl(2);
 		num = num/2;
@@ -92,8 +93,14 @@ void *thread_handler(void *arg) {
 			f = f + 2;
 		}
 	}
-	/*no prime factor found, return 0 to client*/	
-	if(i == 0) {result[i++] = 0;}
+	/*no prime factor found, return 0 or 1 to client*/	
+	if(i == 0) {
+		if(num == 0) {
+			result[i++] = htonl(0);
+		} else {
+			result[i++] = htonl(1);
+		}
+	}
 
 	/*send result to client*/
 	cout << str << "Sent prime factors back to that client." << endl;
