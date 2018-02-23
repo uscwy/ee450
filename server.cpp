@@ -29,7 +29,7 @@ using namespace std;
 int sockfd = -1, efd = -1;
 struct addrinfo hints, *addr = NULL;
 
-
+/*clean all resouces and exit*/
 void cleanup_and_exit(const char *errmsg) {
 	
 	/*print error message*/
@@ -46,7 +46,10 @@ void cleanup_and_exit(const char *errmsg) {
 	/*exit */
 	exit(EXIT_FAILURE);
 }
-
+/*The handler of client request
+This func will read client's socket to get a number, 
+and then decomposite into prime factors which will be sent
+back to client*/
 void *thread_handler(void *arg) {
 	struct thread_arg *p = (struct thread_arg *)arg;
 	int clientfd, ret, len;
